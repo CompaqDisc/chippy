@@ -1,10 +1,13 @@
 #pragma once
 #include <stdint.h>
 
-namespace Chippy {
-	class Display {
+namespace Chippy
+{
+	class Display
+	{
 	public:
-		enum GraphicsMode {
+		enum GraphicsMode
+		{
 			MODE_CHIP8,
 			MODE_CHIP48
 		};
@@ -18,6 +21,7 @@ namespace Chippy {
 
 		Display();
 		void init(uint32_t width, uint32_t height, uint32_t scale);
+		void init(uint32_t gfxmode);
 		void clear();
 	};
 }
