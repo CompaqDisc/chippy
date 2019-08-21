@@ -19,25 +19,29 @@ namespace Chippy
 			STATE_EXITING
 		};
 
-		Display*	dis;
+		Display*	display;
 		Chip8*		chip;
 		uint16_t	n_hexview_base_addr;
 		uint32_t	n_emu_state;
+		const char*		s_test_fname;
 		
 		Chippy()
 		{
 			this->sAppName			= "Chippy";
 			this->n_emu_state		= STATE_INIT;
 			this->n_hexview_base_addr	= 0x200;
-			this->dis			= new Display();
+			this->display			= new Display();
 			this->chip			= new Chip8();
+			this->s_test_fname		= "Pong [Paul Vervalin, 1990].ch8";
 		}
 
 		bool OnUserCreate() override
 		{
-			dis->init(Display::MODE_CHIP8);
+			display->init(Display::MODE_CHIP8);
 			chip->setmode(Chip8::MODE_CHIP8);
 			chip->reset();
+			if (!chip->loadmem(this->s_test_fname))
+				return false;
 			return true;
 		}
 
@@ -47,7 +51,7 @@ namespace Chippy
 
 			if (GetKey(olc::Key::ESCAPE).bPressed)
 			{
-				delete dis;
+				delete display;
 				delete chip;
 				return false;
 			}
@@ -66,7 +70,7 @@ namespace Chippy
 
 			if (GetKey(olc::Key::HOME).bPressed)
 			{
-				dis->init(Display::MODE_CHIP8);
+				display->init(Display::MODE_CHIP8);
 				chip->setmode(Chip8::MODE_CHIP8);
 				chip->reset();
 				n_emu_state = STATE_INIT;
@@ -74,7 +78,7 @@ namespace Chippy
 
 			if (GetKey(olc::Key::END).bPressed)
 			{
-				dis->init(Display::MODE_CHIP48);
+				display->init(Display::MODE_CHIP48);
 				chip->setmode(Chip8::MODE_CHIP48);
 				chip->reset();
 				n_emu_state = STATE_INIT;
@@ -82,7 +86,8 @@ namespace Chippy
 
 			if (GetKey(olc::Key::SPACE).bPressed)
 			{
-				chip->step();
+				if(!chip->step())
+					return false;
 			}
 
 			// If we are in vanilla chip8 mode copy display memory to the display.
@@ -90,7 +95,7 @@ namespace Chippy
 			{
 				for (uint16_t i = 0xf00; i < 0x1000; i++)
 				{
-					dis->n_display_buffer_data[i - 0xf00] = chip->n_memory[i];
+					display->n_display_buffer_data[i - 0xf00] = chip->n_memory[i];
 				}
 			}
 
@@ -101,22 +106,22 @@ namespace Chippy
 			 * `n_display_buffer_data`, and loops over its bits,
 			 * it then scales these 'pixels' by the scalar value onto the canvas.
 			 */
-			for (int n_buffer_idx = 0; n_buffer_idx < dis->n_display_buffer_len; n_buffer_idx++)
+			for (int n_buffer_idx = 0; n_buffer_idx < display->n_display_buffer_len; n_buffer_idx++)
 			{
 				for (int n_position = 0; n_position < 8; n_position++)
 				{
 					// Ensures most significant bit is leftmost.
 					uint8_t mask = 1 << 7 - n_position;
-					for (int n_offset_x = 0; n_offset_x < dis->n_display_scale; n_offset_x++)
+					for (int n_offset_x = 0; n_offset_x < display->n_display_scale; n_offset_x++)
 					{
-						for (int n_offset_y = 0; n_offset_y < dis->n_display_scale; n_offset_y++)
+						for (int n_offset_y = 0; n_offset_y < display->n_display_scale; n_offset_y++)
 						{
 							Draw(
 								(n_buffer_idx * 8 + n_position) % 
-									dis->n_display_width * dis->n_display_scale + n_offset_x + CANVAS_OFFSET,
+									display->n_display_width * display->n_display_scale + n_offset_x + CANVAS_OFFSET,
 								(n_buffer_idx * 8 + n_position) /
-									dis->n_display_width * dis->n_display_scale + n_offset_y + CANVAS_OFFSET,
-								(dis->n_display_buffer_data[n_buffer_idx] & mask) ? olc::GREEN : olc::BLACK
+									display->n_display_width * display->n_display_scale + n_offset_y + CANVAS_OFFSET,
+								(display->n_display_buffer_data[n_buffer_idx] & mask) ? olc::GREEN : olc::BLACK
 							);
 						} // n_offset_y
 					} // n_offset_x
@@ -142,7 +147,7 @@ namespace Chippy
 				);
 
 				DrawString(
-					dis->n_display_width * dis->n_display_scale + CANVAS_OFFSET * 2,
+					display->n_display_width * display->n_display_scale + CANVAS_OFFSET * 2,
 					((pc - n_hexview_base_addr) + CANVAS_OFFSET),
 					str
 				);
@@ -150,7 +155,7 @@ namespace Chippy
 
 			// Draw scrollbar background.
 			FillRect(
-				dis->n_display_width * dis->n_display_scale + CANVAS_OFFSET * 30.5,
+				display->n_display_width * display->n_display_scale + CANVAS_OFFSET * 30.5,
 				CANVAS_OFFSET,
 				CANVAS_OFFSET / 2,
 				CANVAS_OFFSET * 58,
@@ -159,7 +164,7 @@ namespace Chippy
 
 			// Draw scrollbar innards.
 			FillRect(
-				dis->n_display_width * dis->n_display_scale + CANVAS_OFFSET * 30.5,
+				display->n_display_width * display->n_display_scale + CANVAS_OFFSET * 30.5,
 				CANVAS_OFFSET + n_hexview_base_addr / 8,
 				CANVAS_OFFSET / 2,
 				CANVAS_OFFSET * 1.25,
@@ -174,14 +179,14 @@ namespace Chippy
 
 				DrawString(
 					CANVAS_OFFSET,
-					dis->n_display_height * dis->n_display_scale + CANVAS_OFFSET * ((pc - chip->n_program_counter) / 2 + 2),
+					display->n_display_height * display->n_display_scale + CANVAS_OFFSET * ((pc - chip->n_program_counter) / 2 + 2),
 					(pc == chip->n_program_counter) ? "*" : " ",
 					(pc == chip->n_program_counter) ? olc::CYAN : olc::WHITE
 				);
 
 				DrawString(
 					CANVAS_OFFSET * 2,
-					dis->n_display_height * dis->n_display_scale + CANVAS_OFFSET * ((pc - chip->n_program_counter) / 2 + 2),
+					display->n_display_height * display->n_display_scale + CANVAS_OFFSET * ((pc - chip->n_program_counter) / 2 + 2),
 					str,
 					(pc == chip->n_program_counter) ? olc::CYAN : olc::WHITE
 				);
@@ -194,7 +199,7 @@ namespace Chippy
 
 				DrawString(
 					CANVAS_OFFSET * 23,
-					dis->n_display_height * dis->n_display_scale + CANVAS_OFFSET * 2,
+					display->n_display_height * display->n_display_scale + CANVAS_OFFSET * 2,
 					str
 				);
 			}
@@ -206,7 +211,7 @@ namespace Chippy
 
 				DrawString(
 					CANVAS_OFFSET * 23,
-					dis->n_display_height * dis->n_display_scale + CANVAS_OFFSET * 3,
+					display->n_display_height * display->n_display_scale + CANVAS_OFFSET * 3,
 					str
 				);
 			}
@@ -218,7 +223,7 @@ namespace Chippy
 
 				DrawString(
 					CANVAS_OFFSET * 23,
-					dis->n_display_height * dis->n_display_scale + CANVAS_OFFSET * 4,
+					display->n_display_height * display->n_display_scale + CANVAS_OFFSET * 4,
 					str
 				);
 			}
@@ -230,7 +235,7 @@ namespace Chippy
 
 				DrawString(
 					CANVAS_OFFSET * 23,
-					dis->n_display_height * dis->n_display_scale + CANVAS_OFFSET * (i + 11),
+					display->n_display_height * display->n_display_scale + CANVAS_OFFSET * (i + 11),
 					str
 				);
 			}
@@ -243,7 +248,7 @@ namespace Chippy
 int main(int argc, char** argv)
 {
 	Chippy::Chippy* emulator = new Chippy::Chippy();
-	if (emulator->Construct(768, 480, 2, 2, false))
+	if (emulator->Construct(768, 480, 1, 1, false))
 		emulator->Start();
 
 	return 0;
