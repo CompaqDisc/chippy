@@ -64,13 +64,30 @@ bool Chippy::Chip8::step()
 			// Return from a subroutine.
 			// The interpreter sets the program counter to the address at the top of the stack, then subtracts 1 from the stack pointer.
 			this->n_program_counter =
-				(uint16_t) (this->n_memory[0xea0 + n_stack_pointer * 2] << 8) | this->n_memory[0xea0 + n_stack_pointer * 2 + 1];
+				(uint16_t) (this->n_memory[0xEA0 + n_stack_pointer * 2] << 8) | this->n_memory[(0xEA0 + n_stack_pointer * 2) + 1];
+
+			this->n_stack_pointer--;
+			this->n_program_counter -= 2;
 		}
 		else
 		{
 			// SYS nnn
 			// Do nothing.
 		}
+		break;
+	case 0x2:
+		// CALL 
+		// The interpreter increments the stack pointer,
+		this->n_stack_pointer++;
+
+		// then puts the current PC on the top of the stack.
+		this->n_memory[0xEA0 + (n_stack_pointer * 2)] = (uint8_t) (this->n_program_counter >> 8);
+		this->n_memory[0xEA0 + ((n_stack_pointer * 2) + 1)] = (uint8_t) (this->n_program_counter & 0xFF);
+
+		// The PC is then set to nnn.
+		this->n_program_counter = (uint16_t) ((this->n_memory[n_program_counter] & 0xf) << 8) | this->n_memory[n_program_counter + 1];
+		this->n_program_counter -= 2;
+
 		break;
 	case 0x6:
 		// LD Vx, byte
@@ -115,7 +132,7 @@ bool Chippy::Chip8::step()
 
 					// Test collision by logic and.
 					if (n_sprite_bit & n_display_bit) collision = 1;
-					
+
 					// Do the XOR onto screen memory.
 					n_display_data ^= (n_sprite_bit << n_display_bit_n);
 					this->n_memory[n_display_base + n_pixel_offset] = n_display_data;
