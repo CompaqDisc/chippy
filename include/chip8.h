@@ -22,7 +22,8 @@ namespace Chippy
 		Chip8();
 		void reset();
 		void setmode(uint32_t mode);
-		void step();
+		bool loadmem(const char* filename);
+		bool step();
 		void disassemble(char* str, uint16_t addr);
 	};
 }
