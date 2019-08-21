@@ -5,6 +5,10 @@
 Chippy::Chip8::Chip8()
 {
 	this->reset();
+	// for (uint16_t i = 0x000; i < 0x1000; i++)
+	// 	this->n_memory[i] = i ^ (i >> 8) & 0xff;
+	for (uint16_t i = 0x000; i < 0x1000; i++)
+		this->n_memory[i] = 0x00;
 }
 
 void Chippy::Chip8::reset()
@@ -12,9 +16,8 @@ void Chippy::Chip8::reset()
 	this->n_stack_pointer	= 0x00;
 	this->n_program_counter	= 0x200;
 	this->n_i_register	= 0x000;
-	for (uint16_t i = 0x000; i < 0x1000; i++)
-		this->n_memory[i] = i ^ (i >> 8) & 0xff;
-	this->n_memory[0x200] = 0xd5;
+	for (uint8_t i = 0; i < 16; i++)
+		this->n_register[i] = 0x00;
 }
 
 void Chippy::Chip8::setmode(uint32_t mode)
@@ -22,9 +25,116 @@ void Chippy::Chip8::setmode(uint32_t mode)
 	this->n_current_mode = mode;
 }
 
-void Chippy::Chip8::step()
+bool Chippy::Chip8::loadmem(const char* filename)
 {
+	FILE* f = nullptr;
+	f = fopen(filename, "rb");
+
+	if (!f)
+	{
+		fprintf(stderr, "Error opening %s.\n", filename);
+		return false;
+	}
+
+	fseek(f, 0, SEEK_END);
+	size_t size = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	
+	fread(&this->n_memory[0x200], size, 1, f);
+
+	fclose(f);
+	return true;
+}
+
+bool Chippy::Chip8::step()
+{
+	switch (this->n_memory[n_program_counter] >> 4)
+	{
+	case 0x0:
+		if (this->n_memory[n_program_counter + 1] == 0xe0)
+		{
+			// CLS
+			// Clear the display.
+			for (uint16_t i = 0xf00; i < 0x1000; i++)
+				this->n_memory[i] = 0x00;
+		}
+		else if (this->n_memory[n_program_counter + 1] == 0xee)
+		{
+			// RET
+			// Return from a subroutine.
+			// The interpreter sets the program counter to the address at the top of the stack, then subtracts 1 from the stack pointer.
+			this->n_program_counter =
+				(uint16_t) (this->n_memory[0xea0 + n_stack_pointer * 2] << 8) | this->n_memory[0xea0 + n_stack_pointer * 2 + 1];
+		}
+		else
+		{
+			// SYS nnn
+			// Do nothing.
+		}
+		break;
+	case 0x6:
+		// LD Vx, byte
+		this->n_register[this->n_memory[n_program_counter] & 0xf] = this->n_memory[n_program_counter + 1];
+		break;
+	case 0xa:
+		// LD I, addr
+		this->n_i_register = (uint16_t) ((this->n_memory[n_program_counter] & 0xf) << 8) | this->n_memory[n_program_counter + 1];
+		break;
+	case 0xd:
+		{
+			// DRW Vx, Vy, nibble
+			uint8_t sprite_len 	= this->n_memory[this->n_program_counter + 1] & 0xf;
+			bool 	collision	= 0;
+
+			uint16_t n_sprite_base  = this->n_i_register;
+			uint16_t n_display_base = 0xF00;
+
+			// Loop over sprite data.
+			for (int8_t i = 0; i < sprite_len; i++)
+			{
+				// Paint sprite bits in left-to-right order (msb first).
+				for(int8_t b = 7; b >= 0; b--)
+				{
+					// Get a linear pixel number from x and y.
+					uint8_t x = this->n_register[this->n_memory[this->n_program_counter] & 0xf] + (7 - b);
+					uint8_t y = this->n_register[(this->n_memory[this->n_program_counter + 1] >> 4) & 0xf] + i;
+					uint16_t n_pixel = y * 64 + x;
+
+					// Get an offset into display memory.
+					uint16_t n_pixel_offset = n_pixel / 8;
+					// Get the display bit.
+					uint8_t n_display_bit_n = 7 - (n_pixel % 8);
+
+					printf("[%d](%02d,%02d): 0x%03X&(1<<%d)\n", b, x, y, n_display_base + n_pixel_offset, n_display_bit_n);
+					uint8_t n_sprite_data  = this->n_memory[n_sprite_base  + i];
+					uint8_t n_display_data = this->n_memory[n_display_base + n_pixel_offset];
+
+					// Get bit from each.
+					uint8_t n_sprite_bit  = (n_sprite_data & (1 << b)) >> b;
+					uint8_t n_display_bit = (n_display_data & (1 << n_display_bit_n)) >> n_display_bit_n;
+
+					// Test collision by logic and.
+					if (n_sprite_bit & n_display_bit) collision = 1;
+					
+					// Do the XOR onto screen memory.
+					n_display_data ^= (n_sprite_bit << n_display_bit_n);
+					this->n_memory[n_display_base + n_pixel_offset] = n_display_data;
+				}
+			}
+
+			this->n_register[0xF] = collision; 
+		}
+		break;
+	default:
+		char str[32];
+		this->disassemble(str, n_program_counter);
+
+		fprintf(stderr, "Error executing: %s\n", str);
+		return false;
+	}
+
 	this->n_program_counter += 2;
+	return true;
 }
 
 void Chippy::Chip8::disassemble(char* str, uint16_t addr)
