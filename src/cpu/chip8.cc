@@ -2,6 +2,23 @@
 #include <cstdio>
 #include "chip8.h"
 
+#define V0 0x0
+#define V1 0x1
+#define V2 0x2
+#define V3 0x3
+#define V4 0x4
+#define V5 0x5
+#define V6 0x6
+#define V7 0x7
+#define V8 0x8
+#define V9 0x9
+#define VA 0xA
+#define VB 0xB
+#define VC 0xC
+#define VD 0xD
+#define VE 0xE
+#define VF 0xF
+
 Chippy::Chip8::Chip8()
 {
 	this->reset();
@@ -39,7 +56,7 @@ bool Chippy::Chip8::loadmem(const char* filename)
 	fseek(f, 0, SEEK_END);
 	size_t size = ftell(f);
 	fseek(f, 0, SEEK_SET);
-	
+
 	fread(&this->n_memory[0x200], size, 1, f);
 
 	fclose(f);
@@ -48,23 +65,23 @@ bool Chippy::Chip8::loadmem(const char* filename)
 
 bool Chippy::Chip8::step()
 {
-	switch (this->n_memory[n_program_counter] >> 4)
+	switch (this->n_memory[this->n_program_counter] >> 4)
 	{
 	case 0x0:
-		if (this->n_memory[n_program_counter + 1] == 0xe0)
+		if (this->n_memory[this->n_program_counter + 1] == 0xe0)
 		{
 			// CLS
 			// Clear the display.
 			for (uint16_t i = 0xf00; i < 0x1000; i++)
 				this->n_memory[i] = 0x00;
 		}
-		else if (this->n_memory[n_program_counter + 1] == 0xee)
+		else if (this->n_memory[this->n_program_counter + 1] == 0xee)
 		{
 			// RET
 			// Return from a subroutine.
 			// The interpreter sets the program counter to the address at the top of the stack, then subtracts 1 from the stack pointer.
 			this->n_program_counter =
-				(uint16_t) (this->n_memory[0xEA0 + n_stack_pointer * 2] << 8) | this->n_memory[(0xEA0 + n_stack_pointer * 2) + 1];
+				(uint16_t) (this->n_memory[0xEA0 + this->n_stack_pointer * 2] << 8) | this->n_memory[(0xEA0 + this->n_stack_pointer * 2) + 1];
 
 			this->n_stack_pointer--;
 			this->n_program_counter -= 2;
@@ -76,26 +93,26 @@ bool Chippy::Chip8::step()
 		}
 		break;
 	case 0x2:
-		// CALL 
+		// CALL
 		// The interpreter increments the stack pointer,
 		this->n_stack_pointer++;
 
 		// then puts the current PC on the top of the stack.
-		this->n_memory[0xEA0 + (n_stack_pointer * 2)] = (uint8_t) (this->n_program_counter >> 8);
-		this->n_memory[0xEA0 + ((n_stack_pointer * 2) + 1)] = (uint8_t) (this->n_program_counter & 0xFF);
+		this->n_memory[0xEA0 + (this->n_stack_pointer * 2)] = (uint8_t) (this->n_program_counter >> 8);
+		this->n_memory[0xEA0 + ((this->n_stack_pointer * 2) + 1)] = (uint8_t) (this->n_program_counter & 0xFF);
 
 		// The PC is then set to nnn.
-		this->n_program_counter = (uint16_t) ((this->n_memory[n_program_counter] & 0xf) << 8) | this->n_memory[n_program_counter + 1];
+		this->n_program_counter = (uint16_t) ((this->n_memory[this->n_program_counter] & 0xf) << 8) | this->n_memory[this->n_program_counter + 1];
 		this->n_program_counter -= 2;
 
 		break;
 	case 0x6:
 		// LD Vx, byte
-		this->n_register[this->n_memory[n_program_counter] & 0xf] = this->n_memory[n_program_counter + 1];
+		this->n_register[this->n_memory[this->n_program_counter] & 0xf] = this->n_memory[this->n_program_counter + 1];
 		break;
 	case 0xa:
 		// LD I, addr
-		this->n_i_register = (uint16_t) ((this->n_memory[n_program_counter] & 0xf) << 8) | this->n_memory[n_program_counter + 1];
+		this->n_i_register = (uint16_t) ((this->n_memory[this->n_program_counter] & 0xf) << 8) | this->n_memory[this->n_program_counter + 1];
 		break;
 	case 0xd:
 		{
@@ -122,7 +139,10 @@ bool Chippy::Chip8::step()
 					// Get the display bit.
 					uint8_t n_display_bit_n = 7 - (n_pixel % 8);
 
+					#ifdef DEBUG
 					printf("[%d](%02d,%02d): 0x%03X&(1<<%d)\n", b, x, y, n_display_base + n_pixel_offset, n_display_bit_n);
+					#endif
+
 					uint8_t n_sprite_data  = this->n_memory[n_sprite_base  + i];
 					uint8_t n_display_data = this->n_memory[n_display_base + n_pixel_offset];
 
@@ -139,12 +159,50 @@ bool Chippy::Chip8::step()
 				}
 			}
 
-			this->n_register[0xF] = collision; 
+			this->n_register[VF] = collision;
+		}
+		break;
+	case 0xf:
+		switch (this->n_memory[this->n_program_counter + 1])
+		{
+		case 0x33:
+			// LD B, Vx
+			{
+				uint8_t vx = this->n_register[this->n_memory[this->n_program_counter] & 0xf];
+				uint8_t tmp = vx;
+				uint8_t hundreds = tmp / 100;
+				tmp %= 100;
+				uint8_t tens = tmp / 10;
+				tmp %= 10;
+				uint8_t ones = tmp;
+
+				#ifdef DEBUG
+				printf("(%d) %d-%d-%d\n", vx, hundreds, tens, ones);
+				#endif
+
+				this->n_memory[this->n_i_register    ] = hundreds;
+				this->n_memory[this->n_i_register + 1] = tens;
+				this->n_memory[this->n_i_register + 2] = ones;
+			}
+			break;
+		case 0x65:
+			// LD Vx, [I]
+			// The interpreter reads values from memory starting at location I into registers V0 through Vx.
+			{
+				//
+			}
+			//break;
+		default:
+			char str[32];
+			this->disassemble(str, this->n_program_counter);
+
+			fprintf(stderr, "Error executing: %s\n", str);
+			return false;
 		}
 		break;
 	default:
 		char str[32];
-		this->disassemble(str, n_program_counter);
+		this->disassemble(str, this->n_program_counter);
 
 		fprintf(stderr, "Error executing: %s\n", str);
 		return false;
